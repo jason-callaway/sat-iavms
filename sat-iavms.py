@@ -21,6 +21,43 @@ import urllib
 
 from lxml import etree, html
 
-IAVMURL = 'http://iase.disa.mil/stigs/downloads/xml/iavm-to-cve(u).xml'
+class IAVMList:
+    def __init__(self):
+        IAVMURL = 'http://iase.disa.mil/stigs/downloads/xml/iavm-to-cve(u).xml'
 
+    # Returns a dictionary:
+    # iavm_dict['iavm name'] = cve_list
+    def build(self):
+        if argv.verbose == True:
+            print 'Building IAVM list...'
+            
+        iavm_dict = {}
+        iavm_handler = urllib.urlopen(IAVMURL)
+        iavm_content = iavm_handler.read()
 
+        # The root XML element is <IAVMtoCVE>. for knows how to iterate over its
+        # child elements.
+        xml_root = etree.fromstring(iavm_content)
+        for iavm in xml_root:
+            iavm_name = ''
+            cve_list = []
+            # Gets the child elements of <IAVM>
+    
+            children = list(iavm)
+            for child in children:
+                # In the S tag, we just care about the IAVM name attribute
+    
+                if child.tag == 'S':
+                    iavm_name = child.attrib['IAVM']
+                # Now we need to iterate over the CVE tags...
+    
+                if child.tag == 'CVEs':
+                    cves = list(child)
+                    for cve in cves:
+                        # ...and append their text to the cve_list
+    
+                        cve_list.append(cve.text)
+            iavm_dict[iavm_name] = cve_list
+        if argv.verbose == True:
+            print 'Done.'
+        return iavm_dict
