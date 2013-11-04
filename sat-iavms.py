@@ -27,6 +27,8 @@ IAVM_CHANNEL = 'rhel-6-iavm'
 
 # Start the XML-RPC connection to the Satellite API
 client = xmlrpclib.Server(SATELLITE_URL, verbose=0)
+key = client.auth.login(SATELLITE_LOGIN, SATELLITE_PASSWORD)
+
 
 # Initialize a few dictionaries we'll need
 iavm_dict = {}
@@ -68,7 +70,6 @@ for iav in extant_iav_errata:
 # First, scan Satellite for all Security Advisories, and build the errata list
 # For additional information on the Satellite API, refer to:
 # https://access.redhat.com/site/documentation/en-US/Red_Hat_Satellite/5.6/html/API_Overview/
-key = client.auth.login(SATELLITE_LOGIN, SATELLITE_PASSWORD)
 channel_list = client.channel.listAllChannels(key)
 errata = []
 for channel in channel_list:
@@ -77,21 +78,13 @@ for channel in channel_list:
                                                            'Security Advisory')
     for erratum in errata_list:
         if erratum['advisory']:
-            #print erratum
             errata.append(erratum)
-    #errata.append(client.channel.software.listErrataByType(key, channel_label, 
-     #                                                      'Security Advisory'))
-#errata = client.channel.software.listErrataByType(key, 'rhel-x86_64-server-6', 'Security Advisory)
-
-
 
 # Now, for each erratum, we'll see if we need to create a new IAV Erratum
 for erratum in errata:
-    #print erratum['advisory']
-    #print client.errata.listCves(key, erratum['advisory'])
     cves = client.errata.listCves(key, erratum['advisory'])
     for cve in cves:
-        # We're using a try block here, you'll see way...
+        # We're using a try block here, you'll see why...
         try:
             # Instead of searching a list for each erratum, it's faster to see
             # if we have an entry in the cve_to_iavm dictionary.  If we don't,
@@ -112,8 +105,11 @@ for erratum in errata:
                 iav_erratum_exists = iav_errata[iav_name]
                 print "   but it already exists"
             except:
-                new_erratum = client.errata.clone(key, IAVM_CHANNEL, 
+                try:
+                    new_erratum = client.errata.clone(key, IAVM_CHANNEL, 
                                                   [erratum['advisory']])
+                except:
+                    print 'client.errata.clone excepted'
                 print "++++++new erratum created: %s" % new_erratum['advisory']
                 return_value = client.errata.setDetails(key, 
                                                 new_erratum['advisory'], 
