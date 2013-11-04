@@ -52,6 +52,19 @@ for iavm in xml_root:
                 cve_to_iavm_dict[cve.text] = iavm_name
         iavm_dict[iavm_name] = cve_list
 
+# Build a list of the existing IAVM Errata
+extant_iav_errata = []
+try:
+    extant_iav_errata = client.channel.software.listErrataByType(key, IAVM_CHANNEL, 
+                                                      'Security Advisory')
+except:
+    # If we get here, no IAV Errata exist yet.  That's ok
+    pass
+
+iav_errata = []
+for iav in extant_iav_errata:
+    iav_errata[iav['advisory']] = 1
+    
 # First, scan Satellite for all Security Advisories, and build the errata list
 # For additional information on the Satellite API, refer to:
 # https://access.redhat.com/site/documentation/en-US/Red_Hat_Satellite/5.6/html/API_Overview/
@@ -60,18 +73,22 @@ channel_list = client.channel.listAllChannels(key)
 errata = []
 for channel in channel_list:
     channel_label = channel['label']
-    errata.append(client.channel.software.listErrataByType(key, channel_label, 
-                                                           'Security Advisory'))
+    errata_list = client.channel.software.listErrataByType(key, channel_label, 
+                                                           'Security Advisory')
+    for erratum in errata_list:
+        if erratum['advisory']:
+            #print erratum
+            errata.append(erratum)
+    #errata.append(client.channel.software.listErrataByType(key, channel_label, 
+     #                                                      'Security Advisory'))
 #errata = client.channel.software.listErrataByType(key, 'rhel-x86_64-server-6', 'Security Advisory)
 
-# Build a list of the existing IAVM Errata
-iav_errata = client.channel.software.listErrataByType(key, IAVM_CHANNEL, 
-                                                      'Security Advisory')
-for iav in iav_errata:
-    iav_errata[iav['advisory']] = 1
+
 
 # Now, for each erratum, we'll see if we need to create a new IAV Erratum
 for erratum in errata:
+    #print erratum['advisory']
+    #print client.errata.listCves(key, erratum['advisory'])
     cves = client.errata.listCves(key, erratum['advisory'])
     for cve in cves:
         # We're using a try block here, you'll see way...
@@ -81,6 +98,7 @@ for erratum in errata:
             # an exception is thrown, and we break out of the try block, and
             # move onto the next erratum
             iav_name = 'IAV-' + cve_to_iavm_dict[cve]
+            print "+++iava found: " + iav_name
                         
             # Get the list of packages associated with this erratum
             package_list = client.errata.listPackages(key, erratum['advisory'])
@@ -92,21 +110,24 @@ for erratum in errata:
             # head and clone the new erratum and populate it with data
             try:
                 iav_erratum_exists = iav_errata[iav_name]
+                print "   but it already exists"
             except:
                 new_erratum = client.errata.clone(key, IAVM_CHANNEL, 
                                                   [erratum['advisory']])
+                print "++++++new erratum created: %s" % new_erratum['advisory']
                 return_value = client.errata.setDetails(key, 
                                                 new_erratum['advisory'], 
                                                 [{'advisory_name': iav_name}])
+                print "++++++errata.setDetails return number: %d" % return_value
                 packages_added = client.errata.addPackages(key,
                                                            iav_name,
                                                            packages)
         # This is the except / pass statement for the try block under
         # for cve in cves
         # except:
-        except Exception as e:
-            print e
-            #pass
+        except Exception, e:
+            #print "EXCEPTION: %s" % e
+            pass
 
 
 # Log out cleanly
