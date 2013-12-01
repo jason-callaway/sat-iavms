@@ -8,12 +8,13 @@
 
 import xmlrpclib
 import urllib
+import time
 from lxml import etree
 
 # Specify your Satellite FQDN, admin username, and password
 SATELLITE_FQDN = '192.168.122.103'
 SATELLITE_LOGIN = 'admin'
-SATELLITE_PASSWORD = 'password'
+SATELLITE_PASSWORD = 'changeme'
 
 SATELLITE_URL = 'http://' + SATELLITE_FQDN + '/rpc/api'
 
@@ -66,19 +67,14 @@ except:
 iav_errata = {}
 for iav in extant_iav_errata:
     iav_errata[iav['advisory']] = 1
-# print "+++ iav_errata: "
-# print iav_errata
-# print "\n\n"
     
 # First, scan Satellite for all Security Advisories, and build the errata list
 # For additional information on the Satellite API, refer to:
 # https://access.redhat.com/site/documentation/en-US/Red_Hat_Satellite/5.6/html/API_Overview/
 channel_list = client.channel.listAllChannels(key)
+
 errata = []
-for channel in channel_list:
-    
-#     print '++ fetching Security advisories for ' + channel['label']
-    
+for channel in channel_list:    
     channel_label = channel['label']
     errata_list = client.channel.software.listErrataByType(key, channel_label, 
                                                            'Security Advisory')
@@ -86,17 +82,14 @@ for channel in channel_list:
         if erratum['advisory']:
             errata.append(erratum)
             
-#             print '+++ appending ' + erratum['advisory'] + ' to errata list'
-# print "\n\n"
-
 # Now, for each erratum, we'll see if we need to create a new IAV Erratum
 for erratum in errata:
+    time.sleep(1)
     cves = client.errata.listCves(key, erratum['advisory'])
     
-    print '+ ' + erratum['advisory'] + ' cves:'
-    print cves
-    print '\n\n'
-    
+    print '\n+ ' + erratum['advisory'] + ' cves: ' + ', '.join(cves)
+        
+    iav_list = []
     for cve in cves:
         # We're using a try block here, you'll see why...
         try:
@@ -105,49 +98,40 @@ for erratum in errata:
             # an exception is thrown, and we break out of the try block, and
             # move onto the next erratum
             iav_name = 'IAV-' + cve_to_iavm_dict[cve]
-    
-            print "+++ iava found: " + iav_name
-                        
-            # Get the list of packages associated with this erratum
-            
-            print "+++ fetching package list"
-            
+                       
             package_list = client.errata.listPackages(key, erratum['advisory'])
+            
+            print '++ package list for ' + iav_name + ': ' + ', '.join(package_list)
+            
             packages = []
-            for package in package_list:
-                packages.append(package['id'])
+            for pkg in package_list:
+                packages.append(pkg['id'])
                 
-                print "++++ appending package id " + package['id'] + 'to  packages list'
-                
+                print "+++ appending package id " + package['id'] + 'to  packages list'   
             
             # Check to see if an IAVM erratum already exists.  If it doesn't go
             # head and clone the new erratum and populate it with data
             try:
                 iav_erratum_exists = iav_errata[iav_name]
-                print "+++++ but it already exists"
             except:
                 try:
-                    print "++++++ getting a list of cloned errata"
                     new_erratum_list = client.errata.clone(key, IAVM_CHANNEL, 
                                                       [erratum['advisory']])
                     new_erratum = new_erratum_list[0]
-                    print "++++++ new erratum name: " + new_erratum['advisory_name']
                     try:
                         return_value = client.errata.setDetails(key, 
                                                                 new_erratum['advisory_name'], 
                                                                 {'advisory_name': iav_name})
-                        print "+++++++ errata.setDetails succeeded"
                     except Exception, e:
-                        print "+++++++ errata.setDetails EXCEPTED"
+                        print '! Error on errata.setDetails'
                         print e
                         pass
                     try:
                         packages_added = client.errata.addPackages(key,
                                                                    iav_name,
                                                                    packages)
-                        print "+++++++ errata.addPackages succeeded"
                     except Exception, e:
-                        print "+++++++ errata.addPackages EXCEPTED"
+                        print '! Error on errata.addPackages'
                         print e
                         pass
                 except Exception, e:
@@ -156,7 +140,6 @@ for erratum in errata:
         # for cve in cves
         # except:
         except Exception, e:
-            #print "EXCEPTION: %s" % e
             pass
 
 try:
